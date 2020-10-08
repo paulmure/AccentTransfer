@@ -1,8 +1,8 @@
 from pydub import AudioSegment
-import matplotlib.pyplot as plt
 from scipy import signal
 from scipy.io import wavfile
 from multiprocessing import Pool
+import pickle
 import os
 
 mp3_dir = os.path.join('data', 'recordings_mp3')
@@ -14,23 +14,20 @@ def convert_mp3_to_wav(filename):
     sound.export(os.path.join(wav_dir, f'{filename[:-4]}.wav'), format='wav')
 
 
-def convert_data_to_wav():
-    filenames = os.listdir(mp3_dir)
+def convert_wav_to_spectrogram(filename):
+    sample_rate, samples = wavfile.read(os.path.join(wav_dir, filename))
+    _, _, spectrogram = signal.spectrogram(samples, sample_rate)
+    return filename, spectrogram
+
+
+def convert_directory(func, directory):
+    filenames = os.listdir(directory)
     with Pool() as pool:
-        pool.map(convert_mp3_to_wav, filenames)
-
-
-def test():
-    dim_set = set()
-
-    for filename in os.listdir(wav_dir):
-        sample_rate, samples = wavfile.read(os.path.join(wav_dir, filename))
-        frequencies, times, spectrogram = signal.spectrogram(samples, sample_rate)
-        dim_set.add(spectrogram.shape)
-
-    print(dim_set)
+        return pool.map(func, filenames)
 
 
 if __name__ == "__main__":
-    # convert_data_to_wav()
-    test()
+    convert_directory(convert_mp3_to_wav, mp3_dir)
+    spectrograms = convert_directory(convert_wav_to_spectrogram, wav_dir)
+    with open('spectrogram_data', 'wb') as f:
+        pickle.dump(spectrograms, f)
