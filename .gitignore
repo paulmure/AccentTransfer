@@ -1,0 +1,5 @@
+data/
+spectrogram_data
+audio_data
+class_label_names
+scratch.ipynb
