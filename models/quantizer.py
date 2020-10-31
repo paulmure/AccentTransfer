@@ -43,7 +43,7 @@ class VectorQuantizer(nn.Module):
 
         """
         # reshape z -> (batch, height, width, channel) and flatten
-        z = z.permute(0, 2, 1).contiguous()
+        z = z.unsqueeze(2).contiguous()
         z_flattened = z.view(-1, self.e_dim)
         # distances from z to embeddings e_j (z - e)^2 = z^2 + e^2 - 2 e * z
 

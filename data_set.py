@@ -1,6 +1,8 @@
 import pickle
 import numpy as np
+import librosa
 from torch.utils.data import Dataset
+from torch import tensor
 
 
 class AccentDataset(Dataset):
@@ -17,4 +19,7 @@ class AccentDataset(Dataset):
         return len(self.data)
 
     def __getitem__(self, idx):
-        return self.data[idx]
+        wave_form, label = self.data[idx]
+        mfcc = librosa.feature.mfcc(wave_form.numpy(), n_fft=2048, hop_length=512, n_mfcc=30)
+        mfcc = tensor(mfcc).float()
+        return wave_form, mfcc, label

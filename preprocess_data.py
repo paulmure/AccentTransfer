@@ -14,7 +14,7 @@ mp3_dir = os.path.join('data', 'recordings_mp3')
 wav_dir = os.path.join('data', 'recordings_wav')
 
 # audio processing parameters
-sample_rate = 22050
+sample_rate = 16384
 sample_window = sample_rate * 2  # we want 2 second clips
 
 
@@ -51,7 +51,7 @@ def convert_wav_to_wave_data(filename):
 def convert_directory(func, directory):
     filenames = os.listdir(directory)
     random.shuffle(filenames)
-    filenames = filenames[:100]
+    filenames = filenames[:1700]
     with Pool() as pool:
         return list(tqdm(pool.imap(func, filenames)))
 
