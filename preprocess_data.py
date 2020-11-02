@@ -51,7 +51,11 @@ def convert_wav_to_wave_data(filename):
 def convert_directory(func, directory):
     filenames = os.listdir(directory)
     random.shuffle(filenames)
+<<<<<<< HEAD
     filenames = filenames[:50]
+=======
+    filenames = filenames[:1700]
+>>>>>>> 7ae88f449f05e96a568209afb01f3e909bfac985
     with Pool() as pool:
         return list(tqdm(pool.imap(func, filenames)))
 
