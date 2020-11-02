@@ -14,10 +14,7 @@ class AccentDataset(Dataset):
             self.idx_to_labels = pickle.load(f)
         self.num_classes = len(self.idx_to_labels)
         self.xvar = np.var(np.array([x[0].numpy() for x in self.data]))
-<<<<<<< HEAD
         self.scale_factor = np.max([np.max(np.abs(x[0].numpy())) for x in self.data])
-=======
->>>>>>> 7ae88f449f05e96a568209afb01f3e909bfac985
     
     def __len__(self):
         return len(self.data)
@@ -26,8 +23,4 @@ class AccentDataset(Dataset):
         wave_form, label = self.data[idx]
         mfcc = librosa.feature.mfcc(wave_form.numpy(), n_fft=2048, hop_length=512, n_mfcc=30)
         mfcc = tensor(mfcc).float()
-<<<<<<< HEAD
         return wave_form / self.scale_factor, mfcc, label
-=======
-        return wave_form, mfcc, label
->>>>>>> 7ae88f449f05e96a568209afb01f3e909bfac985
