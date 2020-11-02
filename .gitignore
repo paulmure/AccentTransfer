@@ -1,0 +1,7 @@
+data/
+spectrogram_data
+audio_data
+class_label_names
+scratch.ipynb
+__pycache__
+models/__pycache__
