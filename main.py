@@ -6,119 +6,117 @@ import torch.optim as optim
 import torch.nn.functional as F
 from models.model import Model
 from streaming_dataset import StreamingAccentDataset
-import sys
 import matplotlib.pyplot as plt
 import time
 import os
 from math import floor
+import pickle
 
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-# device = torch.device("cpu")
+device = torch.device("cpu")
 
-"""
-Load data and define batch data loaders
-"""
-dataset = StreamingAccentDataset()
-# x_var will not be available if using the streaming data_loader
-# x_train_var = torch.tensor(dataset.xvar)
-num_classes = dataset.num_classes 
-
-# subset = torch.utils.data.Subset(dataset, list(range(30)))
-dataloader = torch.utils.data.DataLoader(dataset, batch_size=2)
-
-# x_train_var.to(device)
-
-"""
-Hyperparameters
-"""
-model_hyperparams = {
+training_params = {
     'n_embeddings': 256,
-    'num_classes': num_classes,
+    'learning_rate': 0.001,
+    'epochs': 2,
+    'batch_size': 1,
+    'commitment_cost': 0.25,
+    'multitask_scale': 0.25,
     'device': device
 }
 
-learning_rate = 0.001
-epochs = 2
-commitment_cost = 0.25
-multitask_scale = 0.5
 
-num_time_samples = 16384 * 2
+class Trainer():
+    def __init__(self,
+                 n_embeddings,
+                 learning_rate,
+                 epochs,
+                 batch_size,
+                 commitment_cost,
+                 multitask_scale,
+                 device):
+        self.epochs = epochs
+        self.commitment_cost = commitment_cost
+        self.multitask_scale = multitask_scale
+        self.device = device
 
-"""
-Set up VQ-VAE model with components defined in ./models/ folder
-"""
+        dataset = StreamingAccentDataset()
+        num_classes = dataset.num_classes
+        dataset = torch.utils.data.Subset(dataset, range(2))
+        self.dataloader = torch.utils.data.DataLoader(dataset, batch_size=batch_size)
 
-model = Model(**model_hyperparams)
+        self.model = Model(n_embeddings, num_classes, device)
+        self.optimizer = optim.Adam(self.model.parameters(), lr=learning_rate, amsgrad=True)
 
-"""
-Set up optimizer and training loop
-"""
+        self.multitask_criterion = nn.CrossEntropyLoss()
 
-optimizer = optim.Adam(model.parameters(), lr=learning_rate, amsgrad=True)
+        self.model.train()
+        self.model.to(device)
 
-model.train()
-model.to(device)
+        self.logs = {f'epoch_{i}': {'loss_recons': [], 'loss_vq': [], 'loss_commit': [], 'loss_multitask': [], 'total_loss': []} \
+                        for i in range(1, epochs+1)}
 
-def train():
-    all_losses = []
-    all_recon_errors = []
+        self.timer = 0
 
-    for i in range(epochs):
-        start_time = time.time()
-        recon_errors = []
-        loss_vals = []
-        multitask_losses = []
-        # adversary_losses = []
-        perplexities = []
-        for audio, mfcc, labels in tqdm(dataloader):
-            labels = labels.to(device)
-            audio = audio.to(device)
-            audio = audio.unsqueeze(1)
-            x = audio.to(device)
-            optimizer.zero_grad()
+    def train(self):
+        for epoch in range(1, self.epochs + 1):
+            self.time_epoch_start()
 
-            x_hat, z_e_x, z_q_x, multitask = model(x)
-            x_hat = x_hat.view(-1, 1, num_time_samples)
-            loss_recons = F.mse_loss(x_hat, audio)
-            loss_vq = F.mse_loss(z_q_x, z_e_x.detach())
-            loss_commit = F.mse_loss(z_e_x, z_q_x.detach())
-            loss_multitask = nn.CrossEntropyLoss()(multitask, labels)
-            # adversary_loss = nn.CrossEntropyLoss()(adversary, labels)
+            for audios, labels in tqdm(self.dataloader):
+                self.optimizer.zero_grad()
 
-            loss = loss_recons + loss_vq + commitment_cost * loss_commit + multitask_scale * loss_multitask
-                #lambda_mul * multitask_loss - lambda_adv * adversary_loss
+                labels = labels.to(device)
+                audios = audios.to(device)
 
-            loss.backward()
-            optimizer.step()
+                x_hat, z_e_x, z_q_x, multitask = self.model(audios)
 
-            recon_errors.append(loss_recons.cpu().detach().numpy())
-            all_recon_errors.append(loss_recons.cpu().detach().numpy())
-            loss_vals.append(loss.cpu().detach().numpy())
-            all_losses.append(loss.cpu().detach().numpy())
-            multitask_losses.append(loss_multitask.cpu().detach().numpy())
-            # adversary_losses.append(adversary_loss.cpu().detach().numpy())
+                loss_recons = F.mse_loss(x_hat, audios)
+                loss_vq = F.mse_loss(z_q_x, z_e_x.detach())
+                loss_commit = F.mse_loss(z_e_x, z_q_x.detach())
+                loss_multitask = self.multitask_criterion(multitask, labels)
 
-        # logging
-        epoch_recon_error = np.mean(recon_errors)
-        epoch_loss_vals = np.mean(loss_vals)
-        epoch_multitask_loss = np.mean(multitask_losses)
-        # epoch_adversary_loss = np.mean(adversary_losses)
-        epoch_perplexities = np.mean(perplexities)
-        runtime = time.time() - start_time
-        print(f'Epoch #{i+1} runtime: {(floor(runtime) // 60):02}:{(floor(runtime) % 60):02}')
-        print(f'Epoch #{i+1}, Recon Error:{epoch_recon_error}, Loss: {epoch_loss_vals}, Perplexity: {epoch_perplexities}, \
-                    Multitask Loss: {epoch_multitask_loss}') #, Adversary Loss: {epoch_adversary_loss}')
-        torch.save(model.state_dict(), os.path.join('trained_models', f'saved_model_epoch_{i+1}'))
+                total_loss = loss_recons + loss_vq + self.commitment_cost * loss_commit + self.multitask_scale * loss_multitask
+
+                total_loss.backward()
+                self.optimizer.step()
+                
+                self.log_training_step(loss_recons, loss_vq, loss_commit, loss_multitask, total_loss, epoch)
+
+            self.time_epoch_end(epoch)
+            self.save_model(epoch)
+
+        self.save_training_log()
+
+    def time_epoch_start(self):
+        self.timer = time.time()
+
+    def time_epoch_end(self, epoch):
+        runtime = time.time() - self.timer
+        print(f'Epoch #{epoch} runtime: {(floor(runtime) // 60):02}:{(floor(runtime) % 60):02}')
     
-    plt.plot(all_losses, label='loss')
-    plt.legend()
-    plt.savefig("training_loss.png")
-    plt.clf()
-    plt.plot(all_recon_errors, label='recon loss')
-    plt.legend()
-    plt.savefig("training_recon_error.png")
+    def save_model(self, epoch):
+        torch.save(self.model.state_dict(), os.path.join('trained_models', f'saved_model_epoch_{epoch}'))
+
+    def log_training_step(self, loss_recons, loss_vq, loss_commit, loss_multitask, total_loss, epoch):
+        logger = self.logs[f'epoch_{epoch}']
+        logger['loss_recons'].append(loss_recons)
+        logger['loss_vq'].append(loss_vq)
+        logger['loss_commit'].append(loss_commit)
+        logger['loss_multitask'].append(loss_multitask)
+        logger['total_loss'].append(total_loss)
+    
+    def log_epoch(self, epoch):
+        logger = self.logs[f'epoch_{epoch}']
+        epoch_recon_error = np.mean(logger['loss_recons'])
+        epoch_total_loss = np.mean(logger['total_loss'])
+        print(f'Epoch #{epoch}, Recon Error:{epoch_recon_error}, Total Loss: {epoch_total_loss}')
+
+    def save_training_log(self):
+        with open('training_log', 'wb') as f:
+            pickle.dump(self.logs, f)
 
 
 if __name__ == "__main__":
-    train()
+    trainer = Trainer(**training_params)
+    trainer.train()

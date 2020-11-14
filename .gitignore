@@ -1,14 +1,10 @@
 data/
-spectrogram_data
-audio_data
 class_label_names
 scratch.ipynb
 __pycache__
 models/__pycache__
+models/wavenet_vocoder/__pycache__
 afrikaans1.wav
-model.png
-training_loss.png
-saved_model
 test.wav
-training_recon_error.png
 trained_models
+training_log

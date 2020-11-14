@@ -20,22 +20,6 @@ class Multitask(torch.nn.Module):
         return self.model(x)
 
 
-# class Adversary(nn.Module):
-#     def __init__(self, num_classes):
-#         super(Adversary, self).__init__()
-#         self.model = nn.Sequential(
-#             nn.Flatten(),
-#             nn.Linear(128, 256),
-#             nn.ReLU(True),
-#             nn.Linear(256, 128),
-#             nn.ReLU(True),
-#             nn.Linear(128, num_classes)
-#         )
-    
-#     def forward(self, x):
-#         return self.model(x)
-
-
 class Model(nn.Module):
     def __init__(self, n_embeddings, num_classes, device):
         super(Model, self).__init__()
@@ -45,7 +29,6 @@ class Model(nn.Module):
             n_embeddings, 256)
         
         self.multitask = Multitask(256 - 32, num_classes)
-        # self.adversary = Adversary(num_classes)
 
         self.decoder = Decoder()
 
@@ -57,11 +40,10 @@ class Model(nn.Module):
         z_q_x_st = z_q_x_st.unsqueeze(1)
 
         multitask = self.multitask(z_q_x_st[:, :, :-32])
-        # adversary = self.adversary(z_q[:, :, 128:])
 
         x_hat = self.decoder(z_q_x_st)
 
-        return x_hat, z_e_x, z_q_x, multitask #, adversary
+        return x_hat, z_e_x, z_q_x, multitask
 
 
 if __name__ == "__main__":

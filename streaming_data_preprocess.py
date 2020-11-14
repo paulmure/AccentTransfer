@@ -53,6 +53,7 @@ def slice_data(signal):
 
 def get_audio_slices(file_path):
     signal, _ = librosa.load(file_path, sr=sample_rate)
+    signal = librosa.util.normalize(signal)
     return slice_data(signal)
 
 
@@ -61,10 +62,9 @@ def convert(label, file_path, output_idx):
     if audio_clips is None: return
 
     for audio_clip in audio_clips:
-        mfcc = librosa.feature.mfcc(audio_clip, n_fft=2048, hop_length=512, n_mfcc=30)
         audio_tensor = tensor(audio_clip).float()
-        mfcc_tensor = tensor(mfcc).float()
-        final_data = (audio_tensor, mfcc_tensor, label)
+        audio_tensor = audio_tensor.unsqueeze(0)
+        final_data = (audio_tensor, label)
         with open(os.path.join(OUT_PUT_DIR, 'data', str(output_idx)), 'wb') as f:
             pickle.dump(final_data, f)
 
