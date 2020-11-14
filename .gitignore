@@ -10,3 +10,5 @@ model.png
 training_loss.png
 saved_model
 test.wav
+training_recon_error.png
+trained_models

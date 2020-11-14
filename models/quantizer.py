@@ -2,76 +2,101 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import numpy as np
+from torch.autograd import Function
 
 
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-# device = torch.device('cpu')
+class VectorQuantization(Function):
+    @staticmethod
+    def forward(ctx, inputs, codebook):
+        with torch.no_grad():
+            embedding_size = codebook.size(1)
+            inputs_size = inputs.size()
+            inputs_flatten = inputs.view(-1, embedding_size)
+
+            codebook_sqr = torch.sum(codebook ** 2, dim=1)
+            inputs_sqr = torch.sum(inputs_flatten ** 2, dim=1, keepdim=True)
+
+            # Compute the distances to the codebook
+            distances = torch.addmm(codebook_sqr + inputs_sqr,
+                inputs_flatten, codebook.t(), alpha=-2.0, beta=1.0)
+
+            _, indices_flatten = torch.min(distances, dim=1)
+            indices = indices_flatten.view(*inputs_size[:-1])
+            ctx.mark_non_differentiable(indices)
+
+            return indices
+
+    @staticmethod
+    def backward(ctx, grad_output):
+        raise RuntimeError('Trying to call `.grad()` on graph containing '
+            '`VectorQuantization`. The function `VectorQuantization` '
+            'is not differentiable. Use `VectorQuantizationStraightThrough` '
+            'if you want a straight-through estimator of the gradient.')
 
 
-class VectorQuantizer(nn.Module):
-    """
-    Discretization bottleneck part of the VQ-VAE.
+class VectorQuantizationStraightThrough(Function):
+    @staticmethod
+    def forward(ctx, inputs, codebook):
+        indices = vq(inputs, codebook)
+        indices_flatten = indices.view(-1)
+        ctx.save_for_backward(indices_flatten, codebook)
+        ctx.mark_non_differentiable(indices_flatten)
 
-    Inputs:
-    - n_e : number of embeddings
-    - e_dim : dimension of embedding
-    - beta : commitment cost used in loss term, beta * ||z_e(x)-sg[e]||^2
-    """
+        codes_flatten = torch.index_select(codebook, dim=0,
+            index=indices_flatten)
+        codes = codes_flatten.view_as(inputs)
 
-    def __init__(self, n_e, e_dim, beta):
-        super(VectorQuantizer, self).__init__()
-        self.n_e = n_e
-        self.e_dim = e_dim
-        self.beta = beta
+        return (codes, indices_flatten)
 
-        self.embedding = nn.Embedding(self.n_e, self.e_dim)
-        self.embedding.weight.data.uniform_(-1.0 / self.n_e, 1.0 / self.n_e)
+    @staticmethod
+    def backward(ctx, grad_output, grad_indices):
+        grad_inputs, grad_codebook = None, None
 
-    def forward(self, z):
-        """
-        Inputs the output of the encoder network z and maps it to a discrete 
-        one-hot vector that is the index of the closest embedding vector e_j
+        if ctx.needs_input_grad[0]:
+            # Straight-through estimator
+            grad_inputs = grad_output.clone()
+        if ctx.needs_input_grad[1]:
+            # Gradient wrt. the codebook
+            indices, codebook = ctx.saved_tensors
+            embedding_size = codebook.size(1)
 
-        z (continuous) -> z_q (discrete)
+            grad_output_flatten = (grad_output.contiguous()
+                                              .view(-1, embedding_size))
+            grad_codebook = torch.zeros_like(codebook)
+            grad_codebook.index_add_(0, indices, grad_output_flatten)
 
-        z.shape = (batch, channel, height, width)
+        return (grad_inputs, grad_codebook)
 
-        quantization pipeline:
+vq = VectorQuantization.apply
+vq_st = VectorQuantizationStraightThrough.apply
 
-            1. get encoder input (B,C,H,W)
-            2. flatten input to (B*H*W,C)
 
-        """
-        # reshape z -> (batch, height, width, channel) and flatten
-        z = z.unsqueeze(2).contiguous()
-        z_flattened = z.view(-1, self.e_dim)
-        # distances from z to embeddings e_j (z - e)^2 = z^2 + e^2 - 2 e * z
+class VQEmbedding(nn.Module):
+    def __init__(self, K, D):
+        super().__init__()
+        self.embedding = nn.Embedding(K, D)
+        self.embedding.weight.data.uniform_(-1./K, 1./K)
 
-        d = torch.sum(z_flattened ** 2, dim=1, keepdim=True) + \
-            torch.sum(self.embedding.weight**2, dim=1) - 2 * \
-            torch.matmul(z_flattened, self.embedding.weight.t())
+    def forward(self, z_e_x):
+        z_e_x_ = z_e_x.contiguous()
+        latents = vq(z_e_x_, self.embedding.weight)
+        return latents
 
-        # find closest encodings
-        min_encoding_indices = torch.argmin(d, dim=1).unsqueeze(1)
-        min_encodings = torch.zeros(
-            min_encoding_indices.shape[0], self.n_e).to(device)
-        min_encodings.scatter_(1, min_encoding_indices, 1)
+    def straight_through(self, z_e_x):
+        z_e_x_ = z_e_x.contiguous()
+        z_q_x_, indices = vq_st(z_e_x_, self.embedding.weight.detach())
+        z_q_x = z_q_x_.contiguous()
 
-        # get quantized latent vectors
-        z_q = torch.matmul(min_encodings, self.embedding.weight).view(z.shape)
+        z_q_x_bar_flatten = torch.index_select(self.embedding.weight,
+            dim=0, index=indices)
+        z_q_x_bar_ = z_q_x_bar_flatten.view_as(z_e_x_)
+        z_q_x_bar = z_q_x_bar_.contiguous()
 
-        # compute loss for embedding
-        loss = torch.mean((z_q.detach()-z)**2) + self.beta * \
-            torch.mean((z_q - z.detach()) ** 2)
+        return z_q_x, z_q_x_bar
 
-        # preserve gradients
-        z_q = z + (z_q - z).detach()
 
-        # perplexity
-        e_mean = torch.mean(min_encodings, dim=0)
-        perplexity = torch.exp(-torch.sum(e_mean * torch.log(e_mean + 1e-10)))
-
-        # reshape back to match original input shape
-        z_q = z_q.permute(0, 1, 2).contiguous()
-
-        return loss, z_q, perplexity, min_encodings, min_encoding_indices
+if __name__ == '__main__':
+    x = torch.randn(1, 256)
+    embed = VQEmbedding(10, 256)
+    out = embed.straight_through(x)
+    print(out[0].shape)

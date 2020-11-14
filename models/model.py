@@ -2,87 +2,73 @@ import torch
 import torch.nn as nn
 import numpy as np
 from .encoder import Encoder
-from .quantizer import VectorQuantizer
+from .quantizer import VQEmbedding
 from .decoder import Decoder
+
+num_time_samples = 16384 * 2
 
 
 class Multitask(torch.nn.Module):
-    def __init__(self, num_classes):
+    def __init__(self, input_size, num_classes):
         super(Multitask, self).__init__()
         self.model = nn.Sequential(
             nn.Flatten(),
-            nn.Linear(128, num_classes),
+            nn.Linear(input_size, num_classes),
         )
 
     def forward(self, x):
         return self.model(x)
 
 
-class Adversary(nn.Module):
-    def __init__(self, num_classes):
-        super(Adversary, self).__init__()
-        self.model = nn.Sequential(
-            nn.Flatten(),
-            nn.Linear(128, 256),
-            nn.ReLU(True),
-            nn.Linear(256, 128),
-            nn.ReLU(True),
-            nn.Linear(128, num_classes)
-        )
+# class Adversary(nn.Module):
+#     def __init__(self, num_classes):
+#         super(Adversary, self).__init__()
+#         self.model = nn.Sequential(
+#             nn.Flatten(),
+#             nn.Linear(128, 256),
+#             nn.ReLU(True),
+#             nn.Linear(256, 128),
+#             nn.ReLU(True),
+#             nn.Linear(128, num_classes)
+#         )
     
-    def forward(self, x):
-        return self.model(x)
+#     def forward(self, x):
+#         return self.model(x)
 
 
 class Model(nn.Module):
-    def __init__(self, n_embeddings, num_classes, beta, save_embedding_map=False):
+    def __init__(self, n_embeddings, num_classes, device):
         super(Model, self).__init__()
-        self.encoder = Encoder()
-        # pass continuous latent vector through discretization bottleneck
-        self.vector_quantization = VectorQuantizer(
-            n_embeddings, 256, beta)
-        
-        self.multitask = Multitask(num_classes)
-        self.adversary = Adversary(num_classes)
+        self.encoder = Encoder(num_time_samples, device)
 
-        # decode the discrete latent representation
+        self.codebook = VQEmbedding(
+            n_embeddings, 256)
+        
+        self.multitask = Multitask(256 - 32, num_classes)
+        # self.adversary = Adversary(num_classes)
+
         self.decoder = Decoder()
 
-        if save_embedding_map:
-            self.img_to_embedding_map = {i: [] for i in range(n_embeddings)}
-        else:
-            self.img_to_embedding_map = None
-
     def forward(self, x, verbose=False):
-        z_e = self.encoder(x)
+        z_e_x = self.encoder(x)
+        z_e_x = z_e_x.squeeze(2)
 
-        embedding_loss, z_q, perplexity, _, _ = self.vector_quantization(
-            z_e)
-        z_q = z_q.permute(0, 2, 1)
+        z_q_x_st, z_q_x = self.codebook.straight_through(z_e_x)
+        z_q_x_st = z_q_x_st.unsqueeze(1)
 
-        multitask = self.multitask(z_q[:, :, :128])
-        adversary = self.adversary(z_q[:, :, 128:])
+        multitask = self.multitask(z_q_x_st[:, :, :-32])
+        # adversary = self.adversary(z_q[:, :, 128:])
 
-        x_hat = self.decoder(z_q)
+        x_hat = self.decoder(z_q_x_st)
 
-        if verbose:
-            print('original data shape:', x.shape)
-            print('encoded data shape:', z_e.shape)
-            print('recon data shape:', x_hat.shape)
-            assert False
-
-        return embedding_loss, x_hat, perplexity, multitask, adversary
+        return x_hat, z_e_x, z_q_x, multitask #, adversary
 
 
 if __name__ == "__main__":
-    # random data
-    x = np.random.random_sample((1, 30, 65))
-    x = torch.cuda.FloatTensor(x)
-    x.to('cuda')
-
-    # test decoder
-    model = Model(150, 44, 1)
-    model.to('cuda')
-    model_out = model(x)
-    print('Dncoder out shape:', model_out[1].shape)
-
+    x = torch.randn(1, 1, num_time_samples)
+    model = Model(150, 44, torch.device('cpu'))
+    x_hat, z_e_x, z_q_x, multitask = model(x)
+    print('x_hat shape:', x_hat.shape)
+    print('z_e_x shape:', z_e_x.shape)
+    print('z_q_x shape:', z_q_x.shape)
+    print('Multitask shape:', multitask.shape)
