@@ -24,7 +24,8 @@ training_params = {
     'commitment_cost': 0.25,
     'multitask_scale': 0.25,
     'device': device,
-    'parallel': True
+    'parallel': True,
+    'test': True
 }
 
 
@@ -37,7 +38,8 @@ class Trainer():
                  commitment_cost,
                  multitask_scale,
                  device,
-                 parallel):
+                 parallel,
+                 test):
         self.epochs = epochs
         self.commitment_cost = commitment_cost
         self.multitask_scale = multitask_scale
@@ -45,7 +47,8 @@ class Trainer():
 
         dataset = StreamingAccentDataset()
         num_classes = dataset.num_classes
-        dataset = torch.utils.data.Subset(dataset, range(2))
+        if test:
+            dataset = torch.utils.data.Subset(dataset, range(2))
         self.dataloader = torch.utils.data.DataLoader(dataset, batch_size=batch_size)
 
         self.model = Model(n_embeddings, num_classes, device, parallel)

@@ -77,12 +77,12 @@ class VQEmbedding(nn.Module):
         self.embedding = nn.Embedding(K, D)
         self.embedding.weight.data.uniform_(-1./K, 1./K)
 
-    def forward(self, z_e_x):
+    def straight_through(self, z_e_x):
         z_e_x_ = z_e_x.contiguous()
         latents = vq(z_e_x_, self.embedding.weight)
         return latents
 
-    def straight_through(self, z_e_x):
+    def forward(self, z_e_x):
         z_e_x_ = z_e_x.contiguous()
         z_q_x_, indices = vq_st(z_e_x_, self.embedding.weight.detach())
         z_q_x = z_q_x_.contiguous()

@@ -42,7 +42,7 @@ class Model(nn.Module):
         z_e_x = self.encoder(x)
         z_e_x = z_e_x.squeeze(2)
 
-        z_q_x_st, z_q_x = self.codebook.straight_through(z_e_x)
+        z_q_x_st, z_q_x = self.codebook(z_e_x)
         z_q_x_st = z_q_x_st.unsqueeze(1)
 
         multitask = self.multitask(z_q_x_st[:, :, :-32])
