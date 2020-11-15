@@ -6,44 +6,28 @@ from matplotlib import pyplot as plt
 from scipy.io.wavfile import write
 
 from models.model import Model
-from main import Trainer
-
-sample_rate = 16384
-num_time_samples = sample_rate * 2
-
-device = torch.device('cuda')
-
-training_params = {
-    'n_embeddings': 128,
-    'learning_rate': 0.001,
-    'epochs': 20,
-    'batch_size': 1,
-    'commitment_cost': 0.25,
-    'multitask_scale': 0.25,
-    'decoder_final_block': True,
-    'device': device,
-    'parallel': True,
-    'test': False,
-    'load_pretrained': True
-}
+from main import Trainer, training_params
 
 
 def load_model():
+    training_params['test'] = True
+    training_params['load_pretrained'] = True
+    training_params['device'] = device
     trainer = Trainer(**training_params)
     return trainer.model
 
 
-def load_audio(file_path):
+def load_audio(file_path, sample_rate, num_time_samples):
     signal, _ = librosa.load(file_path, sr=sample_rate)
     signal = librosa.util.normalize(signal)
     signal = signal[:num_time_samples]
     return signal
 
 
-def generate_audio(signal, model):
+def generate_audio(signal, model, device):
     x = torch.FloatTensor(signal)
     x.to(device)
-    x_hat, _, _, _ = model(x.view(1, 1, -1))
+    x_hat, _ = model(x.view(1, 1, -1))
     x_hat = x_hat.view(-1)
     return x_hat.detach().cpu().numpy()
 
@@ -76,9 +60,13 @@ def visualize_audio(x, x_hat):
     
 
 if __name__ == '__main__':
+    sample_rate = 16384
+    num_time_samples = sample_rate * 2
+    device = torch.device('cuda')
+
     model = load_model()
-    x = load_audio('afrikaans1.wav')
-    x_hat = generate_audio(x, model)
+    x = load_audio('afrikaans1.wav', sample_rate, num_time_samples)
+    x_hat = generate_audio(x, model, device)
     print(x_hat)
     write_audio_to_file('test.wav', x_hat)
     visualize_audio(x, x_hat)
