@@ -28,7 +28,8 @@ training_params = {
     'decoder_final_block': True,
     'device': device,
     'parallel': True,
-    'test': False
+    'test': False,
+    'load_pretrained': True
 }
 
 
@@ -43,7 +44,8 @@ class Trainer():
                  decoder_final_block,
                  device,
                  parallel,
-                 test):
+                 test,
+                 load_pretrained):
         self.epochs = epochs
         self.commitment_cost = commitment_cost
         self.multitask_scale = multitask_scale
@@ -56,6 +58,8 @@ class Trainer():
         self.dataloader = torch.utils.data.DataLoader(dataset, batch_size=batch_size)
 
         self.model = Model(n_embeddings, num_classes, device, decoder_final_block, parallel)
+        if load_pretrained:
+            self.model.load_state_dict(torch.load('saved_model'))
         self.optimizer = optim.Adam(self.model.parameters(), lr=learning_rate, amsgrad=True)
 
         self.multitask_criterion = nn.CrossEntropyLoss()
