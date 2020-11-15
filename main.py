@@ -19,8 +19,8 @@ device = torch.device("cpu")
 training_params = {
     'n_embeddings': 256,
     'learning_rate': 0.001,
-    'epochs': 2,
-    'batch_size': 16,
+    'epochs': 20,
+    'batch_size': 4,
     'commitment_cost': 0.25,
     'multitask_scale': 0.25,
     'device': device,
