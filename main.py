@@ -26,10 +26,11 @@ training_params = {
     'commitment_cost': 0.25,
     'multitask_scale': 0.25,
     'decoder_final_block': True,
+    'quantize': False,
     'device': device,
     'parallel': True,
-    'test': False,
-    'load_pretrained': True
+    'test': True,
+    'load_pretrained': False
 }
 
 
@@ -42,6 +43,7 @@ class Trainer():
                  commitment_cost,
                  multitask_scale,
                  decoder_final_block,
+                 quantize,
                  device,
                  parallel,
                  test,
@@ -50,14 +52,16 @@ class Trainer():
         self.commitment_cost = commitment_cost
         self.multitask_scale = multitask_scale
         self.device = device
+        self.quantize = quantize
 
         dataset = StreamingAccentDataset()
         num_classes = dataset.num_classes
         if test:
+            self.epochs = 2
             dataset = torch.utils.data.Subset(dataset, range(2))
         self.dataloader = torch.utils.data.DataLoader(dataset, batch_size=batch_size)
 
-        self.model = Model(n_embeddings, num_classes, device, decoder_final_block, parallel)
+        self.model = Model(n_embeddings, num_classes, device, quantize, decoder_final_block, parallel)
         if load_pretrained:
             self.model.load_state_dict(torch.load('saved_model'))
         self.optimizer = optim.Adam(self.model.parameters(), lr=learning_rate, amsgrad=True)
@@ -82,21 +86,32 @@ class Trainer():
                 labels = labels.to(device)
                 audios = audios.to(device)
 
-                x_hat, z_e_x, z_q_x, multitask = self.model(audios)
+                if self.quantize:
+                    x_hat, z_e_x, z_q_x, multitask = self.model(audios)
+                else:
+                    x_hat, multitask = self.model(audios)
 
                 loss_recons = F.mse_loss(x_hat, audios)
-                loss_vq = F.mse_loss(z_q_x, z_e_x.detach())
-                loss_commit = F.mse_loss(z_e_x, z_q_x.detach())
                 loss_multitask = self.multitask_criterion(multitask, labels)
+                if self.quantize:
+                    loss_vq = F.mse_loss(z_q_x, z_e_x.detach())
+                    loss_commit = F.mse_loss(z_e_x, z_q_x.detach())
 
-                total_loss = loss_recons + loss_vq + self.commitment_cost * loss_commit + self.multitask_scale * loss_multitask
+                if self.quantize:
+                    total_loss = loss_recons + loss_vq + self.commitment_cost * loss_commit + self.multitask_scale * loss_multitask
+                else:
+                    total_loss = loss_recons + self.multitask_scale * loss_multitask
+
                 total_loss.backward()
 
                 if i % 10 == 0:
                     self.optimizer.step()
                     self.optimizer.zero_grad()
                 
-                self.log_training_step(loss_recons, loss_vq, loss_commit, loss_multitask, total_loss, epoch)
+                if self.quantize:
+                    self.log_training_step(loss_recons, loss_vq, loss_commit, loss_multitask, total_loss, epoch)
+                else:
+                    self.log_training_step_no_quantize(loss_recons, loss_multitask, total_loss, epoch)
 
             self.optimizer.step()
 
@@ -115,6 +130,12 @@ class Trainer():
     
     def save_model(self, epoch):
         torch.save(self.model.state_dict(), os.path.join('trained_models', f'saved_model_epoch_{epoch}'))
+
+    def log_training_step_no_quantize(self, loss_recons, loss_multitask, total_loss, epoch):
+        logger = self.logs[f'epoch_{epoch}']
+        logger['loss_recons'].append(loss_recons.detach().cpu())
+        logger['loss_multitask'].append(loss_multitask.detach().cpu())
+        logger['total_loss'].append(total_loss.detach().cpu())
 
     def log_training_step(self, loss_recons, loss_vq, loss_commit, loss_multitask, total_loss, epoch):
         logger = self.logs[f'epoch_{epoch}']
