@@ -1,33 +1,34 @@
-import numpy as np
-from tqdm import tqdm
 import torch
 import torch.nn as nn
-import torch.optim as optim
 import torch.nn.functional as F
-from models.model import Model
-from streaming_dataset import StreamingAccentDataset
+import torch.optim as optim
+
+import numpy as np
 import matplotlib.pyplot as plt
+
 import time
 import os
-from math import floor
 import pickle
 
+from tqdm import tqdm
+from math import floor
 
-# device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-# device = torch.device("cpu")
-device = torch.device("cuda")
+from models.model import Model
+from streaming_dataset import StreamingAccentDataset
+
+device = torch.device('cuda')
 
 training_params = {
     'n_embeddings': 128,
     'learning_rate': 0.001,
     'epochs': 20,
-    'batch_size': 1,
+    'batch_size': 4,
     'commitment_cost': 0.25,
     'multitask_scale': 0.25,
     'decoder_final_block': True,
     'device': device,
     'parallel': True,
-    'test': True
+    'test': False
 }
 
 
