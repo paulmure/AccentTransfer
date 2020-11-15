@@ -23,7 +23,6 @@ class GatedConv1dTranspose(nn.Module):
         self.tanh = nn.Tanh()
 
     def forward(self, x):
-        x = F.pad(x, (self.dilation, 0))
         return torch.mul(self.tanh(self.conv_f(x)), self.sig(self.conv_g(x)))
 
 
@@ -55,15 +54,12 @@ class Decoder(nn.Module):
 
             n_hidden = 128
             for i in range(7):
-                rate = 2**i
-                hs.append(GatedBlock(int(n_hidden), int(n_hidden // 2), 2, dilation=rate, stride=2))
+                hs.append(GatedBlock(int(n_hidden), int(n_hidden // 2), kernel_size=4, dilation=1, stride=2, padding=1))
                 batch_norms.append(nn.BatchNorm1d(int(n_hidden // 2)))
                 n_hidden /= 2
 
             self.last_conv_layers = nn.ModuleList(hs)
             self.last_batch_norms = nn.ModuleList(batch_norms)
-
-            self.final_fc = nn.Linear(33985, num_time_samples, bias=False)
 
             self.relu_1 = nn.ReLU()
             self.conv_1_1 = nn.Conv1d(1, 1, 1)
@@ -78,7 +74,6 @@ class Decoder(nn.Module):
                 x = layer(x)
                 x = batch_norm(x)
             
-            x = self.final_fc(x)
             x = self.relu_1(self.conv_1_1(x))
             x = self.relu_2(self.conv_1_2(x))
         else:
@@ -92,7 +87,7 @@ if __name__ == "__main__":
     x = torch.randn(1, 1, 256)
 
     # test decoder
-    decoder = Decoder(final_block=False)
+    decoder = Decoder(final_block=True)
     decoder_out = decoder(x)
     print('Decoder out shape:', decoder_out.shape)
     print('Sample window:', num_time_samples)

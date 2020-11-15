@@ -24,7 +24,7 @@ training_params = {
     'batch_size': 1,
     'commitment_cost': 0.25,
     'multitask_scale': 0.25,
-    'decoder_final_block': False,
+    'decoder_final_block': True,
     'device': device,
     'parallel': True,
     'test': True
