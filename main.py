@@ -14,18 +14,19 @@ import pickle
 
 
 # device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-device = torch.device("cpu")
+# device = torch.device("cpu")
+device = torch.device("cuda")
 
 training_params = {
-    'n_embeddings': 256,
+    'n_embeddings': 128,
     'learning_rate': 0.001,
     'epochs': 20,
-    'batch_size': 4,
+    'batch_size': 1,
     'commitment_cost': 0.25,
     'multitask_scale': 0.25,
     'device': device,
-    'parallel': False,
-    'test': False
+    'parallel': True,
+    'test': True
 }
 
 
