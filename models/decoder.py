@@ -43,42 +43,46 @@ class GatedBlock(nn.Module):
 
 class Decoder(nn.Module):
 
-    def __init__(self):
+    def __init__(self, final_block=True):
         super(Decoder, self).__init__()
         self.decoder = WaveNet(
                         out_channels=num_time_samples // 256,
                         scalar_input=True)
-        
-        hs = []
-        batch_norms = []
+        self.final_block = final_block
+        if self.final_block:
+            hs = []
+            batch_norms = []
 
-        n_hidden = 128
-        for i in range(7):
-            rate = 2**i
-            hs.append(GatedBlock(int(n_hidden), int(n_hidden // 2), 2, dilation=rate, stride=2))
-            batch_norms.append(nn.BatchNorm1d(int(n_hidden // 2)))
-            n_hidden /= 2
+            n_hidden = 128
+            for i in range(7):
+                rate = 2**i
+                hs.append(GatedBlock(int(n_hidden), int(n_hidden // 2), 2, dilation=rate, stride=2))
+                batch_norms.append(nn.BatchNorm1d(int(n_hidden // 2)))
+                n_hidden /= 2
 
-        self.last_conv_layers = nn.ModuleList(hs)
-        self.last_batch_norms = nn.ModuleList(batch_norms)
+            self.last_conv_layers = nn.ModuleList(hs)
+            self.last_batch_norms = nn.ModuleList(batch_norms)
 
-        self.final_fc = nn.Linear(33985, num_time_samples, bias=False)
+            self.final_fc = nn.Linear(33985, num_time_samples, bias=False)
 
-        self.relu_1 = nn.ReLU()
-        self.conv_1_1 = nn.Conv1d(1, 1, 1)
-        self.relu_2 = nn.ReLU()
-        self.conv_1_2 = nn.Conv1d(1, 1, 1)
+            self.relu_1 = nn.ReLU()
+            self.conv_1_1 = nn.Conv1d(1, 1, 1)
+            self.relu_2 = nn.ReLU()
+            self.conv_1_2 = nn.Conv1d(1, 1, 1)
 
     def forward(self, x):
         x = self.decoder(x)
-
-        for layer, batch_norm in zip(self.last_conv_layers, self.last_batch_norms):
-            x = layer(x)
-            x = batch_norm(x)
         
-        x = self.final_fc(x)
-        x = self.relu_1(self.conv_1_1(x))
-        x = self.relu_2(self.conv_1_2(x))
+        if self.final_block:
+            for layer, batch_norm in zip(self.last_conv_layers, self.last_batch_norms):
+                x = layer(x)
+                x = batch_norm(x)
+            
+            x = self.final_fc(x)
+            x = self.relu_1(self.conv_1_1(x))
+            x = self.relu_2(self.conv_1_2(x))
+        else:
+            x = x.reshape(-1, 1, num_time_samples)
 
         return x
 
@@ -88,7 +92,7 @@ if __name__ == "__main__":
     x = torch.randn(1, 1, 256)
 
     # test decoder
-    decoder = Decoder()
+    decoder = Decoder(final_block=False)
     decoder_out = decoder(x)
     print('Decoder out shape:', decoder_out.shape)
     print('Sample window:', num_time_samples)

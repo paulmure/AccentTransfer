@@ -21,7 +21,7 @@ class Multitask(torch.nn.Module):
 
 
 class Model(nn.Module):
-    def __init__(self, n_embeddings, num_classes, device, parallel=False):
+    def __init__(self, n_embeddings, num_classes, device, decoder_final_block=True, parallel=False):
         super(Model, self).__init__()
         self.encoder = Encoder(num_time_samples, device)
 
@@ -30,7 +30,7 @@ class Model(nn.Module):
         
         self.multitask = Multitask(32, num_classes)
 
-        self.decoder = Decoder()
+        self.decoder = Decoder(decoder_final_block)
 
         if parallel:
             self.encoder = nn.DataParallel(self.encoder)
