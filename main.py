@@ -97,6 +97,7 @@ class Trainer():
             self.optimizer.step()
 
             self.time_epoch_end(epoch)
+            self.log_epoch(epoch)
             self.save_model(epoch)
 
         self.save_training_log()
@@ -113,11 +114,11 @@ class Trainer():
 
     def log_training_step(self, loss_recons, loss_vq, loss_commit, loss_multitask, total_loss, epoch):
         logger = self.logs[f'epoch_{epoch}']
-        logger['loss_recons'].append(loss_recons)
-        logger['loss_vq'].append(loss_vq)
-        logger['loss_commit'].append(loss_commit)
-        logger['loss_multitask'].append(loss_multitask)
-        logger['total_loss'].append(total_loss)
+        logger['loss_recons'].append(loss_recons.detach().cpu())
+        logger['loss_vq'].append(loss_vq.detach().cpu())
+        logger['loss_commit'].append(loss_commit.detach().cpu())
+        logger['loss_multitask'].append(loss_multitask.detach().cpu())
+        logger['total_loss'].append(total_loss.detach().cpu())
     
     def log_epoch(self, epoch):
         logger = self.logs[f'epoch_{epoch}']
