@@ -13,19 +13,19 @@ from math import floor
 import pickle
 
 
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-# device = torch.device("cpu")
+# device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+device = torch.device("cpu")
 
 training_params = {
     'n_embeddings': 256,
     'learning_rate': 0.001,
     'epochs': 2,
-    'batch_size': 1,
+    'batch_size': 16,
     'commitment_cost': 0.25,
     'multitask_scale': 0.25,
     'device': device,
-    'parallel': True,
-    'test': True
+    'parallel': False,
+    'test': False
 }
 
 
@@ -68,8 +68,8 @@ class Trainer():
         for epoch in range(1, self.epochs + 1):
             self.time_epoch_start()
 
-            for audios, labels in tqdm(self.dataloader):
-                self.optimizer.zero_grad()
+            self.optimizer.zero_grad()
+            for i, (audios, labels) in tqdm(enumerate(self.dataloader)):
 
                 labels = labels.to(device)
                 audios = audios.to(device)
@@ -82,11 +82,15 @@ class Trainer():
                 loss_multitask = self.multitask_criterion(multitask, labels)
 
                 total_loss = loss_recons + loss_vq + self.commitment_cost * loss_commit + self.multitask_scale * loss_multitask
-
                 total_loss.backward()
-                self.optimizer.step()
+
+                if i % 10 == 0:
+                    self.optimizer.step()
+                    self.optimizer.zero_grad()
                 
                 self.log_training_step(loss_recons, loss_vq, loss_commit, loss_multitask, total_loss, epoch)
+
+            self.optimizer.step()
 
             self.time_epoch_end(epoch)
             self.save_model(epoch)
