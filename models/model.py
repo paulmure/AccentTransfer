@@ -28,7 +28,7 @@ class Model(nn.Module):
         self.codebook = VQEmbedding(
             n_embeddings, 256)
         
-        self.multitask = Multitask(256 - 32, num_classes)
+        self.multitask = Multitask(32, num_classes)
 
         self.decoder = Decoder()
 
@@ -45,7 +45,7 @@ class Model(nn.Module):
         z_q_x_st, z_q_x = self.codebook(z_e_x)
         z_q_x_st = z_q_x_st.unsqueeze(1)
 
-        multitask = self.multitask(z_q_x_st[:, :, :-32])
+        multitask = self.multitask(z_q_x_st[:, :, :32])
 
         x_hat = self.decoder(z_q_x_st)
 

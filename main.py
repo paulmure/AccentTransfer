@@ -69,7 +69,7 @@ class Trainer():
             self.time_epoch_start()
 
             self.optimizer.zero_grad()
-            for i, (audios, labels) in tqdm(enumerate(self.dataloader)):
+            for i, (audios, labels) in enumerate(tqdm(self.dataloader)):
 
                 labels = labels.to(device)
                 audios = audios.to(device)
