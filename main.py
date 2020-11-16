@@ -63,7 +63,7 @@ class Trainer():
 
         self.model = Model(n_embeddings, num_classes, device, quantize, decoder_final_block, parallel)
         if load_pretrained:
-            self.model.load_state_dict(torch.load('saved_model'))
+            self.model.load_state_dict(torch.load('saved'))
         self.optimizer = optim.Adam(self.model.parameters(), lr=learning_rate, amsgrad=True)
 
         self.multitask_criterion = nn.CrossEntropyLoss()
